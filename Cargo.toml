@@ -1,0 +1,18 @@
+[package]
+name = "catfive"
+version = "0.1.0"
+edition = "2024"
+authors = ["Kreive Tech <contact@kreive.com.br>"]
+repository = "https://github.com/kreivetech/catfive"
+license = "MIT"
+description = "Category-5 fluent, zero-dependency schema and form validation for Rust."
+readme = "README.md"
+keywords = ["validation", "schema", "form", "validator", "fluent"]
+categories = ["web-programming", "data-structures"]
+
+[features]
+default = []
+regex = ["dep:regex"]
+
+[dependencies]
+regex = { version = "1.10", optional = true }
