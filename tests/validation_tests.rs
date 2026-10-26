@@ -318,3 +318,115 @@ fn test_serde_serialization() {
     let deserialized: ValidationErrors = serde_json::from_str(&json).unwrap();
     assert_eq!(errors, deserialized);
 }
+
+#[test]
+fn test_spek_cpf_validation() {
+    let cpf_val = string().spek("[CPF]");
+
+    // Valid formatted CPF
+    assert!(cpf_val.validate("529.982.247-25").is_ok());
+
+    // Valid unformatted CPF
+    assert!(cpf_val.validate("52998224725").is_ok());
+
+    // Invalid checksum digit
+    assert!(cpf_val.validate("529.982.247-24").is_err());
+
+    // Invalid repeated digits
+    assert!(cpf_val.validate("111.111.111-11").is_err());
+    assert!(cpf_val.validate("00000000000").is_err());
+
+    // Invalid length
+    assert!(cpf_val.validate("12345").is_err());
+}
+
+#[test]
+fn test_spek_cnpj_classic_and_alphanumeric() {
+    // Chained with .block()
+    let cnpj_val = string().spek("[CNPJ]").block(";@#");
+
+    // 1. Classic numeric CNPJ (formatted & unformatted)
+    assert!(cnpj_val.validate("12.345.678/0001-95").is_ok());
+    assert!(cnpj_val.validate("12345678000195").is_ok());
+
+    // Invalid classic checksum
+    assert!(cnpj_val.validate("12.345.678/0001-90").is_err());
+
+    // 2. New 2026 Alphanumeric CNPJ (IN RFB 2229/2024)
+    // Root has letters 'A', 'B', 'C', order has 'D', 'E'
+    assert!(cnpj_val.validate("12.ABC.345/01DE-35").is_ok());
+    assert!(cnpj_val.validate("12ABC34501DE35").is_ok());
+
+    // Invalid alphanumeric checksum
+    assert!(cnpj_val.validate("12.ABC.345/01DE-99").is_err());
+
+    // Blocked character inside CNPJ
+    assert!(cnpj_val.validate("12.ABC.345/01D;-35").is_err());
+
+    // Identical characters
+    assert!(cnpj_val.validate("00000000000000").is_err());
+}
+
+#[test]
+fn test_spek_luhn_algorithm() {
+    let luhn_val = string().spek("[LUHN]");
+
+    // Standard valid Luhn numbers
+    assert!(luhn_val.validate("79927398713").is_ok());
+    assert!(luhn_val.validate("49927398716").is_ok());
+
+    // Invalid Luhn numbers
+    assert!(luhn_val.validate("79927398710").is_err());
+    assert!(luhn_val.validate("49927398717").is_err());
+}
+
+#[test]
+fn test_spek_ascii_rules() {
+    // Range 'A'..='Z' (ASCII 65..90)
+    let ascii_range = string().spek("[ASCII 65..90]");
+    assert!(ascii_range.validate("HELLO").is_ok());
+    assert!(ascii_range.validate("hello").is_err()); // 'h' is 104
+    assert!(ascii_range.validate("HELL0").is_err()); // '0' is 48
+
+    // Single code 65 ('A')
+    let ascii_single = string().spek("[ASCII 65]");
+    assert!(ascii_single.validate("AAAA").is_ok());
+    assert!(ascii_single.validate("AAAB").is_err());
+
+    // All standard ASCII
+    let ascii_all = string().spek("[ASCII]");
+    assert!(ascii_all.validate("normal text").is_ok());
+    assert!(ascii_all.validate("coração").is_err()); // contains non-ASCII 'ã'
+}
+
+#[test]
+fn test_spek_encodings_and_charsets() {
+    let hex_val = string().spek("[HEX]");
+    assert!(hex_val.validate("DEADBEEF0123456789abcdef").is_ok());
+    assert!(hex_val.validate("NOT_HEX").is_err());
+
+    let b64_val = string().spek("[BASE64]");
+    assert!(b64_val.validate("SGVsbG8gV29ybGQ=").is_ok());
+    assert!(b64_val.validate("Not Base64!").is_err());
+
+    let b58_val = string().spek("[BASE58]");
+    assert!(
+        b58_val
+            .validate("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")
+            .is_ok()
+    );
+    assert!(b58_val.validate("Contains0OrO").is_err()); // '0' and 'O' are not in Base58
+
+    // Literal custom charset [ABC234]
+    let custom_set = string().spek("[ABC234]").block("!");
+    assert!(custom_set.validate("A2B3C4").is_ok());
+    assert!(custom_set.validate("A2B3C5").is_err()); // '5' is not in [ABC234]
+    assert!(custom_set.validate("A2B3C4!").is_err()); // blocked '!'
+}
+
+#[test]
+fn test_spek_custom_message() {
+    let val = string().spek_msg("[CPF]", "Invalid Brazilian CPF: {value}");
+    let err = val.validate("00000000000").unwrap_err();
+    assert_eq!(err.message(), "Invalid Brazilian CPF: 00000000000");
+}
