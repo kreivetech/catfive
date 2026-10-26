@@ -1,5 +1,6 @@
 use crate::error::ValidationError;
 use crate::format_helper::format_template;
+use crate::spek::{parse_spek, validate_spek_kind};
 use crate::traits::Validator;
 use std::collections::HashSet;
 use std::net::IpAddr;
@@ -17,6 +18,44 @@ impl StringValidator {
     /// Creates a new empty string validator.
     pub fn new() -> Self {
         Self { rules: Vec::new() }
+    }
+
+    /// Enforces a specification pattern like `"[CPF]"`, `"[CNPJ]"`, `"[LUHN]"`, `"[HEX]"`, `"[ASCII 65..90]"`, or `"[ABC234]"`.
+    ///
+    /// # Example
+    /// ```rust
+    /// use catfive::string;
+    ///
+    /// let cpf_val = string().spek("[CPF]");
+    /// let cnpj_val = string().spek("[CNPJ]").block(";@#");
+    /// let hex_val = string().spek("[HEX]");
+    /// let ascii_val = string().spek("[ASCII 65..90]");
+    /// let custom_val = string().spek("[ABC234]");
+    /// ```
+    pub fn spek(self, spec: &str) -> Self {
+        self.spek_internal(spec, None)
+    }
+
+    /// Enforces a specification pattern with a custom message template.
+    pub fn spek_msg(self, spec: &str, msg_template: &str) -> Self {
+        self.spek_internal(spec, Some(msg_template.to_string()))
+    }
+
+    fn spek_internal(mut self, spec: &str, custom_msg: Option<String>) -> Self {
+        match parse_spek(spec) {
+            Ok(kind) => {
+                self.rules.push(Arc::new(move |val| {
+                    validate_spek_kind(&kind, val, custom_msg.as_deref())
+                }));
+            }
+            Err(e) => {
+                let err_msg = e;
+                self.rules.push(Arc::new(move |_| {
+                    Some(ValidationError::new("invalid_spek_spec", err_msg.clone()))
+                }));
+            }
+        }
+        self
     }
 
     /// Enforces a minimum character length with default error message.
