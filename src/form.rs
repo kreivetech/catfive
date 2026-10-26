@@ -1,7 +1,7 @@
-use std::collections::{BTreeMap, HashMap};
 use crate::error::{ValidationError, ValidationErrors};
 use crate::string::StringValidator;
 use crate::traits::Validator;
+use std::collections::{BTreeMap, HashMap};
 
 /// Trait abstracting key-value form data access.
 pub trait FormData {
@@ -21,6 +21,18 @@ impl FormData for HashMap<&str, &str> {
     }
 }
 
+impl FormData for HashMap<String, Vec<String>> {
+    fn get_value(&self, key: &str) -> Option<&str> {
+        self.get(key).and_then(|v| v.first()).map(|s| s.as_str())
+    }
+}
+
+impl FormData for HashMap<&str, Vec<&str>> {
+    fn get_value(&self, key: &str) -> Option<&str> {
+        self.get(key).and_then(|v| v.first()).copied()
+    }
+}
+
 impl FormData for BTreeMap<String, String> {
     fn get_value(&self, key: &str) -> Option<&str> {
         self.get(key).map(|v| v.as_str())
@@ -35,9 +47,7 @@ impl FormData for BTreeMap<&str, &str> {
 
 impl FormData for [(&str, &str)] {
     fn get_value(&self, key: &str) -> Option<&str> {
-        self.iter()
-            .find(|(k, _)| *k == key)
-            .map(|(_, v)| *v)
+        self.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
     }
 }
 
@@ -47,14 +57,16 @@ impl FormData for Vec<(&str, &str)> {
     }
 }
 
+#[derive(Clone)]
 struct FormRule {
     name: String,
     validator: StringValidator,
     required: bool,
+    required_message: String,
 }
 
 /// Fluent schema validator for form payloads (key-value data).
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct FormValidator {
     rules: Vec<FormRule>,
 }
@@ -65,12 +77,23 @@ impl FormValidator {
         Self { rules: Vec::new() }
     }
 
-    /// Adds a required field rule to the form validator.
-    pub fn field(mut self, name: impl Into<String>, validator: StringValidator) -> Self {
+    /// Adds a required field rule with default error message ("This field is required").
+    pub fn field(self, name: impl Into<String>, validator: StringValidator) -> Self {
+        self.field_msg(name, validator, "This field is required")
+    }
+
+    /// Adds a required field rule with a custom error message.
+    pub fn field_msg(
+        mut self,
+        name: impl Into<String>,
+        validator: StringValidator,
+        required_msg: impl Into<String>,
+    ) -> Self {
         self.rules.push(FormRule {
             name: name.into(),
             validator,
             required: true,
+            required_message: required_msg.into(),
         });
         self
     }
@@ -84,6 +107,7 @@ impl FormValidator {
             name: name.into(),
             validator,
             required: false,
+            required_message: String::new(),
         });
         self
     }
@@ -102,7 +126,7 @@ impl FormValidator {
                     if rule.required {
                         errors.add(
                             &rule.name,
-                            ValidationError::new("required", "This field is required"),
+                            ValidationError::new("required", rule.required_message.clone()),
                         );
                     }
                 }
