@@ -1,10 +1,12 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 
 /// Represents a single validation failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ValidationError {
-    code: &'static str,
+    code: Cow<'static, str>,
     message: String,
 }
 
@@ -12,14 +14,22 @@ impl ValidationError {
     /// Creates a new validation error with a machine-readable code and a human-readable message.
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
-            code,
+            code: Cow::Borrowed(code),
+            message: message.into(),
+        }
+    }
+
+    /// Creates a new validation error with a dynamic or static code.
+    pub fn custom_code(code: impl Into<Cow<'static, str>>, message: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
             message: message.into(),
         }
     }
 
     /// Error code identifying the validation failure type (e.g. `"blocked_char"`, `"min_length"`).
-    pub fn code(&self) -> &'static str {
-        self.code
+    pub fn code(&self) -> &str {
+        &self.code
     }
 
     /// Detailed message describing the failure.
@@ -38,6 +48,7 @@ impl std::error::Error for ValidationError {}
 
 /// Represents a validation failure bound to a specific field name.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FieldError {
     field: String,
     errors: Vec<ValidationError>,
@@ -65,7 +76,12 @@ impl FieldError {
 
 impl fmt::Display for FieldError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "field '{}' has {} error(s)", self.field, self.errors.len())
+        write!(
+            f,
+            "field '{}' has {} error(s)",
+            self.field,
+            self.errors.len()
+        )
     }
 }
 
@@ -73,6 +89,7 @@ impl std::error::Error for FieldError {}
 
 /// Collection of validation errors indexed by field name.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ValidationErrors {
     fields: HashMap<String, Vec<ValidationError>>,
 }
@@ -97,6 +114,21 @@ impl ValidationErrors {
         }
     }
 
+    /// Merges another set of `ValidationErrors` into this one.
+    pub fn merge(&mut self, other: ValidationErrors) {
+        for (field, errors) in other.fields {
+            self.add_many(field, errors);
+        }
+    }
+
+    /// Prefixes all field keys with the given prefix (e.g. `"address."` for nested structures).
+    pub fn prefix_fields(&mut self, prefix: &str) {
+        let old_fields = std::mem::take(&mut self.fields);
+        for (field, errors) in old_fields {
+            self.fields.insert(format!("{}{}", prefix, field), errors);
+        }
+    }
+
     /// Returns `true` if there are no validation errors.
     pub fn is_empty(&self) -> bool {
         self.fields.is_empty()
@@ -105,6 +137,11 @@ impl ValidationErrors {
     /// Returns the total count of invalid fields.
     pub fn len(&self) -> usize {
         self.fields.len()
+    }
+
+    /// Returns `true` if the specified field has any validation errors.
+    pub fn has_field(&self, field: &str) -> bool {
+        self.fields.contains_key(field)
     }
 
     /// Returns errors for a specific field, if any.
@@ -116,11 +153,31 @@ impl ValidationErrors {
     pub fn iter(&self) -> impl Iterator<Item = (&str, &[ValidationError])> {
         self.fields.iter().map(|(k, v)| (k.as_str(), v.as_slice()))
     }
+
+    /// Returns a flattened list of all errors as `(field_name, &ValidationError)` tuples.
+    pub fn all_errors(&self) -> Vec<(&str, &ValidationError)> {
+        let mut all = Vec::new();
+        for (field, errs) in &self.fields {
+            for err in errs {
+                all.push((field.as_str(), err));
+            }
+        }
+        all
+    }
+
+    /// Consumes the container and returns the inner `HashMap`.
+    pub fn into_inner(self) -> HashMap<String, Vec<ValidationError>> {
+        self.fields
+    }
 }
 
 impl fmt::Display for ValidationErrors {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Validation failed with {} invalid field(s):", self.fields.len())?;
+        writeln!(
+            f,
+            "Validation failed with {} invalid field(s):",
+            self.fields.len()
+        )?;
         for (field, errors) in &self.fields {
             for err in errors {
                 writeln!(f, "  - [{}]: {}", field, err)?;
