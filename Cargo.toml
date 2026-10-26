@@ -13,6 +13,11 @@ categories = ["web-programming", "data-structures"]
 [features]
 default = []
 regex = ["dep:regex"]
+serde = ["dep:serde"]
 
 [dependencies]
 regex = { version = "1.10", optional = true }
+serde = { version = "1.0", optional = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1.0"
