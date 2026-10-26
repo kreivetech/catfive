@@ -20,6 +20,7 @@ pub(crate) mod format_helper;
 pub mod list;
 pub mod number;
 pub mod schema;
+pub mod spek;
 pub mod string;
 pub mod traits;
 
