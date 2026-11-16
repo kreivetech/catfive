@@ -18,10 +18,10 @@ Designed with composability and developer experience in mind, **Catfive** provid
   - `[CNPJ]`: Brazilian CNPJ validation (natively supports classic numeric and the 2026 alphanumeric standard IN RFB 2229/2024).
   - `[LUHN]`: ISO/IEC 7812 check digit algorithm (payment cards, IMEI).
   - `[ASCII 65..90]`, `[ASCII]`, `[ASCII PRINTABLE]`, and custom literal character sets (e.g. `[ABC234]`).
-- **Application Security & Threat Mitigation**: Built-in protection against malicious inputs:
-  - `.no_hidden_chars()`: Detects invisible control codes, zero-width joiners, and Trojan Source bidirectional overrides (`U+202E`, etc.).
-  - `.no_xss()`: Identifies Cross-Site Scripting vectors (`<script>`, inline handlers `onerror=`, `javascript:` URIs).
-  - `.no_sql_injection()`: Catches SQL injection signatures (tautologies `OR 1=1`, stacked commands `; DROP`, SQL comments `--`, `UNION SELECT`).
+- **Built-in Security & Threat Mitigation**: Automatic parsing sanitization out of the box without requiring manual configuration:
+  - Rejects invisible control codes, zero-width characters, and Trojan Source bidirectional overrides (`U+202E`, etc.).
+  - Rejects Cross-Site Scripting (XSS) vectors (`<script>`, inline handlers `onerror=`, `javascript:` URIs).
+  - Rejects SQL injection signatures (tautologies `OR 1=1`, stacked commands `; DROP`, SQL comments `--`, `UNION SELECT`).
 - **Composable Error Formatting**: Granular error messages with dynamic runtime placeholders (`{char}`, `{index}`, `{min}`, `{count}`, `{value}`) or custom closures.
 - **Form & Struct Schemas**: Validate untyped key-value maps, nested structs, optional fields, and cross-field rules (`.refine()`).
 - **Collection Validation**: Validate arrays, slices, and vectors with uniqueness and cardinality constraints via `catfive::list`.
