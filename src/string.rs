@@ -1,8 +1,6 @@
 use crate::error::ValidationError;
 use crate::format_helper::format_template;
-use crate::security::{
-    find_hidden_character, find_sql_injection_pattern, find_xss_pattern, make_security_error,
-};
+use crate::security::inspect_string_security;
 use crate::spek::{parse_spek, validate_spek_kind};
 use crate::traits::Validator;
 use std::collections::HashSet;
@@ -461,92 +459,6 @@ impl StringValidator {
         self
     }
 
-    /// Validates that the string does not contain invisible control characters,
-    /// bidirectional override spoofing (Trojan Source), zero-width spaces, or null bytes.
-    ///
-    /// Available message placeholders: `{char}`, `{index}`, `{position}`, `{value}`.
-    pub fn no_hidden_chars(self) -> Self {
-        self.no_hidden_chars_msg(
-            "String contains invisible or non-printable character at index {index}",
-        )
-    }
-
-    /// Validates that the string does not contain invisible characters with a custom message.
-    pub fn no_hidden_chars_msg(mut self, msg_template: &str) -> Self {
-        let tpl = msg_template.to_string();
-        self.rules.push(Arc::new(move |val| {
-            if let Some((ch, idx)) = find_hidden_character(val) {
-                let ch_str = ch.to_string();
-                let idx_str = idx.to_string();
-                let pos_str = (idx + 1).to_string();
-                Some(make_security_error(
-                    "hidden_character",
-                    "String contains invisible or non-printable character",
-                    Some(&tpl),
-                    &[
-                        ("char", &ch_str),
-                        ("index", &idx_str),
-                        ("position", &pos_str),
-                        ("value", val),
-                    ],
-                ))
-            } else {
-                None
-            }
-        }));
-        self
-    }
-
-    /// Enforces that the string does not contain Cross-Site Scripting (XSS) vectors,
-    /// such as `<script>` tags, inline event handlers (`onload=`, `onerror=`),
-    /// `javascript:` URIs, or malicious HTML wrappers.
-    ///
-    /// Available message placeholders: `{pattern}`, `{value}`.
-    pub fn no_xss(self) -> Self {
-        self.no_xss_msg("Potential Cross-Site Scripting (XSS) payload detected ({pattern})")
-    }
-
-    /// Enforces that the string does not contain XSS vectors with a custom message template.
-    pub fn no_xss_msg(mut self, msg_template: &str) -> Self {
-        let tpl = msg_template.to_string();
-        self.rules.push(Arc::new(move |val| {
-            find_xss_pattern(val).map(|pattern| {
-                make_security_error(
-                    "xss_detected",
-                    "Potential Cross-Site Scripting (XSS) payload detected",
-                    Some(&tpl),
-                    &[("pattern", pattern), ("value", val)],
-                )
-            })
-        }));
-        self
-    }
-
-    /// Enforces that the string does not contain obvious SQL injection patterns,
-    /// such as SQL comments (`--`, `/*`), tautologies (`OR 1=1`), stacked destructive
-    /// statements (`; DROP TABLE`), or `UNION SELECT` payloads.
-    ///
-    /// Available message placeholders: `{pattern}`, `{value}`.
-    pub fn no_sql_injection(self) -> Self {
-        self.no_sql_injection_msg("Potential SQL injection signature detected ({pattern})")
-    }
-
-    /// Enforces that the string does not contain SQL injection patterns with a custom message template.
-    pub fn no_sql_injection_msg(mut self, msg_template: &str) -> Self {
-        let tpl = msg_template.to_string();
-        self.rules.push(Arc::new(move |val| {
-            find_sql_injection_pattern(val).map(|pattern| {
-                make_security_error(
-                    "sql_injection_detected",
-                    "Potential SQL injection signature detected",
-                    Some(&tpl),
-                    &[("pattern", pattern), ("value", val)],
-                )
-            })
-        }));
-        self
-    }
-
     /// Adds a custom user-defined validation closure.
     pub fn custom<F>(mut self, validator: F) -> Self
     where
@@ -597,6 +509,13 @@ impl StringValidator {
 impl Validator<str> for StringValidator {
     fn validate_all(&self, value: &str) -> Vec<ValidationError> {
         let mut errors = Vec::new();
+
+        // 1. Automatic parsing security analysis (hidden chars, XSS, SQLi)
+        if let Some(sec_err) = inspect_string_security(value) {
+            errors.push(sec_err);
+        }
+
+        // 2. Custom/explicit rules
         for rule in &self.rules {
             if let Some(err) = rule(value) {
                 errors.push(err);
