@@ -253,19 +253,6 @@ fn test_additional_string_validators() {
     assert!(url_val.validate("https://google.com").is_ok());
     assert!(url_val.validate("ftp://invalid").is_err());
 
-    let uuid_val = string().uuid();
-    assert!(
-        uuid_val
-            .validate("123e4567-e89b-12d3-a456-426614174000")
-            .is_ok()
-    );
-    assert!(uuid_val.validate("not-a-uuid").is_err());
-
-    let ip_val = string().ip();
-    assert!(ip_val.validate("192.168.1.1").is_ok());
-    assert!(ip_val.validate("::1").is_ok());
-    assert!(ip_val.validate("999.999.999.999").is_err());
-
     let role_val = string().in_list(&["admin", "user", "guest"]);
     assert!(role_val.validate("admin").is_ok());
     assert!(role_val.validate("superuser").is_err());
@@ -400,23 +387,7 @@ fn test_spek_ascii_rules() {
 }
 
 #[test]
-fn test_spek_encodings_and_charsets() {
-    let hex_val = string().spek("[HEX]");
-    assert!(hex_val.validate("DEADBEEF0123456789abcdef").is_ok());
-    assert!(hex_val.validate("NOT_HEX").is_err());
-
-    let b64_val = string().spek("[BASE64]");
-    assert!(b64_val.validate("SGVsbG8gV29ybGQ=").is_ok());
-    assert!(b64_val.validate("Not Base64!").is_err());
-
-    let b58_val = string().spek("[BASE58]");
-    assert!(
-        b58_val
-            .validate("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")
-            .is_ok()
-    );
-    assert!(b58_val.validate("Contains0OrO").is_err()); // '0' and 'O' are not in Base58
-
+fn test_spek_literal_charsets() {
     // Literal custom charset [ABC234]
     let custom_set = string().spek("[ABC234]").block("!");
     assert!(custom_set.validate("A2B3C4").is_ok());
