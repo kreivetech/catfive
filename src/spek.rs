@@ -11,14 +11,6 @@ pub enum SpekKind {
     Cnpj,
     /// Luhn algorithm (ISO/IEC 7812, credit cards, IMEI).
     Luhn,
-    /// Hexadecimal characters `[0-9a-fA-F]`.
-    Hex,
-    /// Standard Base64 `[A-Za-z0-9+/=]`.
-    Base64,
-    /// URL-safe Base64 `[A-Za-z0-9-_]`.
-    Base64Url,
-    /// Bitcoin/IPFS Base58.
-    Base58,
     /// All 7-bit ASCII characters (0..=127).
     AsciiAll,
     /// Visible printable ASCII characters (32..=126).
@@ -27,12 +19,8 @@ pub enum SpekKind {
     AsciiRange(u8, u8),
     /// Single specific ASCII byte code.
     AsciiCode(u8),
-    /// Canonical UUID format (8-4-4-4-12 hex).
-    Uuid,
     /// ISO Calendar Date `YYYY-MM-DD`.
     Date,
-    /// Network MAC address (`XX:XX:XX:XX:XX:XX` or `XX-XX-XX-XX-XX-XX`).
-    Mac,
     /// Literal closed set of allowed characters (e.g. `[ABC234]`).
     LiteralCharset(HashSet<char>),
 }
@@ -54,15 +42,9 @@ pub fn parse_spek(raw_spec: &str) -> Result<SpekKind, String> {
         "CPF" => Ok(SpekKind::Cpf),
         "CNPJ" => Ok(SpekKind::Cnpj),
         "LUHN" => Ok(SpekKind::Luhn),
-        "HEX" => Ok(SpekKind::Hex),
-        "BASE64" => Ok(SpekKind::Base64),
-        "BASE64URL" => Ok(SpekKind::Base64Url),
-        "BASE58" => Ok(SpekKind::Base58),
         "ASCII" => Ok(SpekKind::AsciiAll),
         "ASCII PRINTABLE" => Ok(SpekKind::AsciiPrintable),
-        "UUID" => Ok(SpekKind::Uuid),
         "DATE" => Ok(SpekKind::Date),
-        "MAC" => Ok(SpekKind::Mac),
         _ => {
             // Check for [ASCII ...] variants
             if let Some(stripped) = upper.strip_prefix("ASCII ") {
@@ -113,17 +95,11 @@ pub fn validate_spek_kind(
         SpekKind::Cpf => validate_cpf(val, custom_msg),
         SpekKind::Cnpj => validate_cnpj(val, custom_msg),
         SpekKind::Luhn => validate_luhn(val, custom_msg),
-        SpekKind::Hex => validate_hex(val, custom_msg),
-        SpekKind::Base64 => validate_base64(val, custom_msg),
-        SpekKind::Base64Url => validate_base64url(val, custom_msg),
-        SpekKind::Base58 => validate_base58(val, custom_msg),
         SpekKind::AsciiAll => validate_ascii_all(val, custom_msg),
         SpekKind::AsciiPrintable => validate_ascii_printable(val, custom_msg),
         SpekKind::AsciiRange(min, max) => validate_ascii_range(val, *min, *max, custom_msg),
         SpekKind::AsciiCode(code) => validate_ascii_code(val, *code, custom_msg),
-        SpekKind::Uuid => validate_uuid(val, custom_msg),
         SpekKind::Date => validate_date(val, custom_msg),
-        SpekKind::Mac => validate_mac(val, custom_msg),
         SpekKind::LiteralCharset(set) => validate_literal_charset(val, set, custom_msg),
     }
 }
@@ -375,70 +351,8 @@ fn validate_luhn(val: &str, custom_msg: Option<&str>) -> Option<ValidationError>
 }
 
 // ============================================================================
-// Encodings & Charsets
+// ASCII Rules
 // ============================================================================
-fn validate_hex(val: &str, custom_msg: Option<&str>) -> Option<ValidationError> {
-    if val.is_empty() || !val.chars().all(|c| c.is_ascii_hexdigit()) {
-        Some(make_err(
-            "invalid_hex",
-            "Value must contain only hexadecimal characters",
-            custom_msg,
-            &[("value", val)],
-        ))
-    } else {
-        None
-    }
-}
-
-fn validate_base64(val: &str, custom_msg: Option<&str>) -> Option<ValidationError> {
-    let is_valid = !val.is_empty()
-        && val
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=');
-    if !is_valid {
-        Some(make_err(
-            "invalid_base64",
-            "Value must be valid Base64",
-            custom_msg,
-            &[("value", val)],
-        ))
-    } else {
-        None
-    }
-}
-
-fn validate_base64url(val: &str, custom_msg: Option<&str>) -> Option<ValidationError> {
-    let is_valid = !val.is_empty()
-        && val
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    if !is_valid {
-        Some(make_err(
-            "invalid_base64url",
-            "Value must be valid Base64URL",
-            custom_msg,
-            &[("value", val)],
-        ))
-    } else {
-        None
-    }
-}
-
-fn validate_base58(val: &str, custom_msg: Option<&str>) -> Option<ValidationError> {
-    const B58: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-    let is_valid = !val.is_empty() && val.bytes().all(|b| B58.contains(&b));
-    if !is_valid {
-        Some(make_err(
-            "invalid_base58",
-            "Value must be valid Base58",
-            custom_msg,
-            &[("value", val)],
-        ))
-    } else {
-        None
-    }
-}
-
 fn validate_ascii_all(val: &str, custom_msg: Option<&str>) -> Option<ValidationError> {
     for ch in val.chars() {
         if !ch.is_ascii() {
@@ -521,31 +435,6 @@ fn validate_ascii_code(
     None
 }
 
-fn validate_uuid(val: &str, custom_msg: Option<&str>) -> Option<ValidationError> {
-    let is_valid = if val.len() == 36 {
-        val.chars().enumerate().all(|(idx, ch)| {
-            if idx == 8 || idx == 13 || idx == 18 || idx == 23 {
-                ch == '-'
-            } else {
-                ch.is_ascii_hexdigit()
-            }
-        })
-    } else {
-        false
-    };
-
-    if !is_valid {
-        Some(make_err(
-            "invalid_uuid",
-            "Must be a valid UUID",
-            custom_msg,
-            &[("value", val)],
-        ))
-    } else {
-        None
-    }
-}
-
 fn validate_date(val: &str, custom_msg: Option<&str>) -> Option<ValidationError> {
     // YYYY-MM-DD
     if val.len() != 10 {
@@ -582,30 +471,6 @@ fn validate_date(val: &str, custom_msg: Option<&str>) -> Option<ValidationError>
             custom_msg,
             &[("value", val)],
         )),
-    }
-}
-
-fn validate_mac(val: &str, custom_msg: Option<&str>) -> Option<ValidationError> {
-    let is_valid = if val.len() == 17 {
-        let sep = val.chars().nth(2).unwrap();
-        (sep == ':' || sep == '-')
-            && val.split(sep).count() == 6
-            && val
-                .split(sep)
-                .all(|part| part.len() == 2 && part.chars().all(|c| c.is_ascii_hexdigit()))
-    } else {
-        false
-    };
-
-    if !is_valid {
-        Some(make_err(
-            "invalid_mac",
-            "Must be a valid MAC address",
-            custom_msg,
-            &[("value", val)],
-        ))
-    } else {
-        None
     }
 }
 
