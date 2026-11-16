@@ -38,14 +38,14 @@ Add **Catfive** to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-catfive = "0.2.0"
+catfive = "0.3.0"
 ```
 
 With optional features:
 
 ```toml
 [dependencies]
-catfive = { version = "0.2.0", features = ["serde", "regex"] }
+catfive = { version = "0.3.0", features = ["serde", "regex"] }
 ```
 
 ---
