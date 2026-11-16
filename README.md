@@ -1,30 +1,30 @@
 # Catfive 🌪️
 
-**Catfive** is a category-5, fluent, zero-dependency schema and form validation library for Rust.
+**Catfive** is a fluent, zero-dependency schema and form validation library for Rust.
 
-Inspired by developer-friendly schema libraries like Zod, **Catfive** gives you composable, expressive validation rules without forcing procedural attribute macros (`#[derive(...)]`) onto your structs.
+Designed with composability and developer experience in mind, **Catfive** provides an expressive builder API for runtime data validation without requiring procedural attribute macros (`#[derive(...)]`) on your domain models.
 
 [![Crates.io](https://img.shields.io/crates/v/catfive.svg)](https://crates.io/crates/catfive)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
 
-## Highlights
+## Features
 
-- ⚡ **Macro-Free**: Clean, functional, and composable builder API without `#[derive(Validate)]`.
-- 📦 **Zero Dependencies by Default**: Core validators operate entirely on the Rust standard library (`std`).
-- 🔮 **Universal Pattern Engine (`spek`)**: Validate documents and standards via `.spek("[...]")`:
-  - `[CPF]`: Brazilian CPF (modulo 11 check digits, repeated digits rejection).
-  - `[CNPJ]`: Brazilian CNPJ (native support for both classic numeric and the new 2026 alphanumeric standard IN RFB 2229/2024).
-  - `[LUHN]`: ISO/IEC 7812 check digit algorithm (credit cards, IMEI).
-  - `[HEX]`, `[BASE64]`, `[BASE58]`, `[ASCII 65..90]`, and custom literal charsets like `[ABC234]`.
-- 🔄 **Cloneable Validators**: Every validator implements `Clone` for easy template reuse across your codebase.
-- 💬 **Custom & Template Error Messages**: Format errors like `println!` with dynamic placeholders (`{char}`, `{index}`, `{min}`, `{count}`, `{value}`) or closures.
-- 📋 **Form & Struct Schemas**: Validate untyped key-value form submissions or strongly-typed Rust structs with nested schemas and cross-field refinements.
-- 📚 **Collection Validation**: Validate lists, vectors, and slices using `catfive::list` with uniqueness and length rules.
-- 🎯 **Optional Features**:
-  - `serde`: Serialize `ValidationErrors` directly to JSON for web APIs (Axum, Actix-web, Rocket).
-  - `regex`: Enable regular expression pattern matching.
+- **Macro-Free**: Decoupled, functional validation logic without polluting domain structs with `#[derive(Validate)]`.
+- **Zero Dependencies by Default**: Core validators rely strictly on the Rust standard library (`std`).
+- **Universal Pattern Engine (`spek`)**: Declarative pattern matching for standards and verification algorithms:
+  - `[CPF]`: Brazilian CPF validation (Modulo 11 check digits, rejects repeated sequences).
+  - `[CNPJ]`: Brazilian CNPJ validation (natively supports classic numeric and the 2026 alphanumeric standard IN RFB 2229/2024).
+  - `[LUHN]`: ISO/IEC 7812 check digit algorithm (payment cards, IMEI).
+  - `[ASCII 65..90]`, `[ASCII]`, `[ASCII PRINTABLE]`, and custom literal character sets (e.g. `[ABC234]`).
+- **Composable Error Formatting**: Granular error messages with dynamic runtime placeholders (`{char}`, `{index}`, `{min}`, `{count}`, `{value}`) or custom closures.
+- **Form & Struct Schemas**: Validate untyped key-value maps, nested structs, optional fields, and cross-field rules (`.refine()`).
+- **Collection Validation**: Validate arrays, slices, and vectors with uniqueness and cardinality constraints via `catfive::list`.
+- **Reusability**: All validators implement `Clone` for shared validation rules and templates.
+- **Optional Integrations**:
+  - `serde`: Direct serialization of `ValidationErrors` for web frameworks (Axum, Actix-web, Rocket).
+  - `regex`: Regular expression matching via the `regex` crate.
 
 ---
 
@@ -46,65 +46,80 @@ catfive = { version = "0.2.0", features = ["serde", "regex"] }
 
 ---
 
-## Quick Start
+## Usage
 
-### 1. Custom & Template Error Messages (`println!`-style)
+### 1. String Validation & Character Filtering
 
-You can let Catfive use its precise default error messages (which pinpoint the exact offending character), or provide your own message using template placeholders or closures:
+Enforce constraints, block specific characters, and inspect detailed failure reasons:
 
 ```rust
 use catfive::string;
 
-// Using template placeholders:
-let username_val = string()
-    .min_msg(5, "Username must have at least {min} characters (got {count})")
-    .block_msg(";@#$&", "Found forbidden character '{char}' at position {position}");
+let username_validator = string()
+    .min(3)
+    .max(20)
+    .block(";@#$&");
 
-let err = username_val.validate("usr@").unwrap_err();
-println!("{}", err.message()); // "Found forbidden character '@' at position 4"
+// Valid input:
+assert!(username_validator.validate("kreivetech").is_ok());
+
+// Validation failure:
+let err = username_validator.validate("admin;drop").unwrap_err();
+assert_eq!(err.code(), "blocked_char");
+assert_eq!(err.message(), "Character ';' is not allowed");
+```
+
+### 2. Error Message Templating
+
+Customize error messages using dynamic contextual placeholders or formatting closures:
+
+```rust
+use catfive::string;
+
+// Using placeholder templates:
+let username = string()
+    .min_msg(5, "Username must contain at least {min} characters (received {count})")
+    .block_msg(";@#$&", "Forbidden character '{char}' detected at position {position}");
+
+let err = username.validate("usr@").unwrap_err();
+assert_eq!(err.message(), "Forbidden character '@' detected at position 4");
 
 // Using a custom closure:
-let strict_val = string().block_with(";@#", |ch, idx| {
-    format!("Prohibited character '{}' at 0-indexed position {}", ch, idx)
+let strict_rule = string().block_with(";@#", |ch, idx| {
+    format!("Prohibited character '{}' found at index {}", ch, idx)
 });
 ```
 
----
+### 3. Specification Engine (`.spek()`)
 
-### 2. Universal Pattern Engine: `.spek("[...]")`
-
-Validate Brazilian documents, standard encodings, mathematical algorithms, and custom character sets with a single declarative method:
+Apply official verification algorithms, standards, and character specifications:
 
 ```rust
 use catfive::string;
 
-// 1. Brazilian CNPJ (natively supports classic numeric AND new 2026 alphanumeric IN RFB 2229/2024):
-let cnpj_val = string().spek("[CNPJ]").block(";@#");
-assert!(cnpj_val.validate("12.345.678/0001-95").is_ok()); // Classic numeric
-assert!(cnpj_val.validate("12.ABC.345/01DE-35").is_ok()); // New 2026 alphanumeric
+// Brazilian CNPJ (supports both classic numeric and the 2026 alphanumeric standard):
+let cnpj = string().spek("[CNPJ]").block(";@#");
+assert!(cnpj.validate("12.345.678/0001-95").is_ok()); // Numeric
+assert!(cnpj.validate("12.ABC.345/01DE-35").is_ok()); // Alphanumeric (IN RFB 2229/2024)
 
-// 2. Brazilian CPF:
-let cpf_val = string().spek("[CPF]");
-assert!(cpf_val.validate("529.982.247-25").is_ok());
+// Brazilian CPF:
+let cpf = string().spek("[CPF]");
+assert!(cpf.validate("529.982.247-25").is_ok());
 
-// 3. Mathematical Checksum (Luhn algorithm for credit cards / IMEI):
-let card_val = string().spek("[LUHN]");
+// Luhn check digit algorithm (payment cards, IMEI):
+let card = string().spek("[LUHN]");
+assert!(card.validate("79927398713").is_ok());
 
-// 4. ASCII ranges & custom character specifications:
+// ASCII range constraint:
 let uppercase = string().spek("[ASCII 65..90]"); // 'A'..='Z'
-let custom_charset = string().spek("[ABC234]").block("!");
 
-// 5. Encodings:
-let hex_val = string().spek("[HEX]");
-let b64_val = string().spek("[BASE64]");
-let b58_val = string().spek("[BASE58]");
+// Literal character whitelist:
+let custom_charset = string().spek("[ABC234]").block("!");
 ```
 
----
+### 4. Struct Validation Without Macros
 
-### 3. Validating Structs (Optional Fields, Refinements & Nested Schemas)
-
-Define schemas for arbitrary structs using typed field selectors, cross-field validations, and nested schemas:
+Define schemas for strongly-typed data structures, including optional fields, cross-field validations, and nested schemas:
 
 ```rust
 use catfive::{schema, string, number, ValidationError};
@@ -132,18 +147,16 @@ fn main() {
             if u.password == u.confirm_password {
                 Ok(())
             } else {
-                Err(ValidationError::new("password_mismatch", "Passwords do not match"))
+                Err(ValidationError::new("password_mismatch", "Passwords must match"))
             }
         })
         .nested("address", |u| &u.address, address_schema);
 }
 ```
 
----
+### 5. Collection & List Validation (`catfive::list`)
 
-### 4. Validating Collections & Arrays (`catfive::list`)
-
-Validate vectors and slices with collection-level constraints and individual item checks:
+Validate slices and vectors with collection-level constraints and per-item checks:
 
 ```rust
 use catfive::{list, string, Validator};
@@ -157,14 +170,12 @@ let tags = vec!["rust", "web", "api"];
 assert!(tags_validator.validate(&tags).is_ok());
 
 let duplicate_tags = vec!["rust", "rust"];
-assert!(tags_validator.validate(&duplicate_tags).is_err()); // "unique_items"
+assert!(tags_validator.validate(&duplicate_tags).is_err());
 ```
 
----
+### 6. Untyped Form Payloads (`catfive::form`)
 
-### 5. Validating Forms (Key-Value Payloads)
-
-Perfect for HTTP requests, query params, and HTML forms:
+Validate key-value maps (such as HTTP query strings and URL-encoded form submissions):
 
 ```rust
 use std::collections::HashMap;
@@ -182,31 +193,13 @@ form_data.insert("email", "contact@kreive.com.br");
 assert!(signup_form.validate(&form_data).is_ok());
 ```
 
----
+### 7. Serialization for Web Handlers (`serde` feature)
 
-### 6. Built-in String Validators
-
-- `.spek("[...]")` / `.spek_msg("[...]", "...")`
-- `.email()` / `.email_msg(...)`
-- `.url()` / `.url_msg(...)`
-- `.uuid()` / `.uuid_msg(...)`
-- `.ip()` / `.ip_msg(...)`
-- `.in_list(&["admin", "user"])` / `.in_list_msg(...)`
-- `.contains("substr")` / `.contains_msg(...)`
-- `.starts_with("prefix")` / `.ends_with("suffix")`
-- `.alphanumeric()` / `.alphabetic()` / `.numeric()`
-- `.block("chars")` / `.allow_only("chars")`
-- `.regex(pattern)` (requires `regex` feature)
-
----
-
-### 7. JSON Serialization for Web APIs (`serde` feature)
-
-Enable the `serde` feature in `Cargo.toml` to serialize errors directly into JSON responses (e.g. HTTP 422 Unprocessable Entity in Axum or Actix-web):
+When the `serde` feature is enabled, `ValidationErrors` can be serialized directly to JSON in HTTP handlers (e.g. Axum, Actix-web, Rocket):
 
 ```rust
 #[cfg(feature = "serde")]
-fn return_json_error(errors: &catfive::ValidationErrors) -> String {
+fn serialize_errors(errors: &catfive::ValidationErrors) -> String {
     serde_json::to_string(errors).unwrap()
 }
 ```
