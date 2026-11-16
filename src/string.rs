@@ -3,7 +3,6 @@ use crate::format_helper::format_template;
 use crate::spek::{parse_spek, validate_spek_kind};
 use crate::traits::Validator;
 use std::collections::HashSet;
-use std::net::IpAddr;
 use std::sync::Arc;
 
 type Rule = Arc<dyn Fn(&str) -> Option<ValidationError> + Send + Sync>;
@@ -20,7 +19,7 @@ impl StringValidator {
         Self { rules: Vec::new() }
     }
 
-    /// Enforces a specification pattern like `"[CPF]"`, `"[CNPJ]"`, `"[LUHN]"`, `"[HEX]"`, `"[ASCII 65..90]"`, or `"[ABC234]"`.
+    /// Enforces a specification pattern like `"[CPF]"`, `"[CNPJ]"`, `"[LUHN]"`, `"[ASCII 65..90]"`, or `"[ABC234]"`.
     ///
     /// # Example
     /// ```rust
@@ -28,7 +27,6 @@ impl StringValidator {
     ///
     /// let cpf_val = string().spek("[CPF]");
     /// let cnpj_val = string().spek("[CNPJ]").block(";@#");
-    /// let hex_val = string().spek("[HEX]");
     /// let ascii_val = string().spek("[ASCII 65..90]");
     /// let custom_val = string().spek("[ABC234]");
     /// ```
@@ -453,54 +451,6 @@ impl StringValidator {
                 || (val.starts_with("https://") && val.len() > 8);
             if !is_valid || val.contains(' ') {
                 Some(ValidationError::new("url", err_msg.clone()))
-            } else {
-                None
-            }
-        }));
-        self
-    }
-
-    /// Validates that the string is a standard UUID (8-4-4-4-12 hex characters).
-    pub fn uuid(self) -> Self {
-        self.uuid_msg("Must be a valid UUID")
-    }
-
-    /// Validates that the string is a standard UUID with a custom message.
-    pub fn uuid_msg(mut self, msg: &str) -> Self {
-        let err_msg = msg.to_string();
-        self.rules.push(Arc::new(move |val| {
-            let is_valid = if val.len() == 36 {
-                val.chars().enumerate().all(|(idx, ch)| {
-                    if idx == 8 || idx == 13 || idx == 18 || idx == 23 {
-                        ch == '-'
-                    } else {
-                        ch.is_ascii_hexdigit()
-                    }
-                })
-            } else {
-                false
-            };
-
-            if !is_valid {
-                Some(ValidationError::new("uuid", err_msg.clone()))
-            } else {
-                None
-            }
-        }));
-        self
-    }
-
-    /// Validates that the string is a valid IPv4 or IPv6 address.
-    pub fn ip(self) -> Self {
-        self.ip_msg("Must be a valid IP address")
-    }
-
-    /// Validates that the string is a valid IPv4 or IPv6 address with a custom message.
-    pub fn ip_msg(mut self, msg: &str) -> Self {
-        let err_msg = msg.to_string();
-        self.rules.push(Arc::new(move |val| {
-            if val.parse::<IpAddr>().is_err() {
-                Some(ValidationError::new("ip", err_msg.clone()))
             } else {
                 None
             }
