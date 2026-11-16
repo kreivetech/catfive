@@ -1,5 +1,4 @@
 use crate::error::ValidationError;
-use crate::format_helper::format_template;
 
 /// Scans a string for invisible unicode characters, bidirectional control overrides,
 /// zero-width characters, and non-printable control codes.
@@ -65,7 +64,6 @@ pub fn find_xss_pattern(val: &str) -> Option<&'static str> {
     }
 
     // 3. JavaScript pseudo-protocol
-    // Strips whitespace/control characters within javascript: check
     let stripped_lower: String = lower
         .chars()
         .filter(|c| !c.is_whitespace() && *c != '\0')
@@ -185,15 +183,28 @@ pub fn find_sql_injection_pattern(val: &str) -> Option<&'static str> {
     None
 }
 
-pub(crate) fn make_security_error(
-    code: &'static str,
-    default_msg: impl Into<String>,
-    custom_msg: Option<&str>,
-    vars: &[(&str, &str)],
-) -> ValidationError {
-    let msg = match custom_msg {
-        Some(tpl) => format_template(tpl, vars),
-        None => default_msg.into(),
-    };
-    ValidationError::new(code, msg)
+/// Runs automatic parsing sanitization checks across raw string values.
+pub fn inspect_string_security(val: &str) -> Option<ValidationError> {
+    if let Some((_ch, idx)) = find_hidden_character(val) {
+        return Some(ValidationError::new(
+            "hidden_character",
+            format!("String contains invisible or non-printable character at index {}", idx),
+        ));
+    }
+
+    if let Some(pattern) = find_xss_pattern(val) {
+        return Some(ValidationError::new(
+            "xss_detected",
+            format!("Potential Cross-Site Scripting (XSS) payload detected ({})", pattern),
+        ));
+    }
+
+    if let Some(pattern) = find_sql_injection_pattern(val) {
+        return Some(ValidationError::new(
+            "sql_injection_detected",
+            format!("Potential SQL injection signature detected ({})", pattern),
+        ));
+    }
+
+    None
 }
